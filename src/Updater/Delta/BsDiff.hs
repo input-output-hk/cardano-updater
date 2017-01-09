@@ -49,9 +49,13 @@ type Offset = Int64
 offsetToInt :: Offset -> Int
 offsetToInt ofs = Prelude.fromIntegral ofs
 
+-- | BsDiff Header
 data Header = Header !Offset !Offset !Offset
     deriving (Show,Eq)
 
+-- | BsDiff Content Handle, ready for application
+--
+-- it contains 3 differents compressed streamf of data
 data BsDiffHandle = BsDiffHandle
     { bsHeader     :: Header
     , controlBlock :: MVar L.ByteString
@@ -85,13 +89,7 @@ toI64 l                 = error $ toList ("cannot convert " <> show l <> " to I6
 getOffset :: Stream L.ByteString Offset
 getOffset = (toI64 . L.unpack) <$> consume 8
 
-splitChunks fromChunk n = loop
-  where
-    loop bs
-        | length bs == 0 = []
-        | otherwise      =
-            let (b1, b2) = splitAt n bs
-             in fromChunk b1 : loop b2
+optional f = (Just <$> f) <|> pure Nothing
 
 -- | Open a bsdiff and create a ready to apply structure
 openDiff :: String -> IO BsDiffHandle
@@ -113,8 +111,6 @@ openDiff fp =
         dat   <- consume dataLen
         extra <- remaining
         return (hdr, ctrl, dat, extra)
-
-optional f = (Just <$> f) <|> pure Nothing
 
 -- | Apply a diff that is coming from a BsDiffHandle, to the @src@ and pipe everything in the @dst@ Handle.
 applyDiff :: BsDiffHandle -> LFilePath -> Handle -> IO ()
