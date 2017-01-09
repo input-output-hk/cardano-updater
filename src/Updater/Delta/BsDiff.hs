@@ -93,6 +93,7 @@ splitChunks fromChunk n = loop
             let (b1, b2) = splitAt n bs
              in fromChunk b1 : loop b2
 
+-- | Open a bsdiff and create a ready to apply structure
 openDiff :: String -> IO BsDiffHandle
 openDiff fp =
     toResult . runStream toDiffHandle =<< L.readFile (toList fp)
@@ -105,6 +106,7 @@ openDiff fp =
                      <*> newMVar (BZip.decompress extra)
     toDiffHandle = do
         magic <- getOffset
+        -- magic number associated with the file format. In ASCII, "BSDIFF40"
         when (magic /= 0x3034464649445342) $ error (toList $ show magic)
         hdr@(Header ctrlLen dataLen _) <- Header <$> getOffset <*> getOffset <*> getOffset
         ctrl  <- consume ctrlLen
@@ -114,13 +116,14 @@ openDiff fp =
 
 optional f = (Just <$> f) <|> pure Nothing
 
+-- | Apply a diff that is coming from a BsDiffHandle, to the @src@ and pipe everything in the @dst@ Handle.
 applyDiff :: BsDiffHandle -> LFilePath -> Handle -> IO ()
 applyDiff bsDiffH src dst = fileMapReadWith (fromString src) start
   where
     start :: UArray Word8 -> IO ()
     start old = loop 0 0
       where
-        put h dat = putStrLn (show dat) >> L.hPut h dat
+        put h dat = L.hPut h dat
 
         loop :: Int64 -> Int64 -> IO ()
         loop oldPos newPos = do
