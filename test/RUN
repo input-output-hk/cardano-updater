@@ -1,0 +1,100 @@
+#!/bin/sh
+
+#stack exec -- cardano-updater-exe src dst diff
+
+# check bsdiff is available in the system
+bsdiff 2>/dev/null
+if [ $? -eq 127 ]; then
+    echo "error: bsdiff is not available in your path"
+    exit 1
+fi
+
+# check bspatch is available in the system
+bspatch 2>/dev/null
+if [ $? -eq 127 ]; then
+    echo "error: bspatch is not available in your path"
+    exit 2
+fi
+
+SHASUM_LINUX=0
+SHASUM_OSX=0
+shasum -a 512 -v > /dev/null
+if [ $? -eq 127 ]; then
+    sha512sum 2> /dev/null
+    if [ $? -e1 127 ]; then
+        echo "error:  no sha512sum or shasum installed"
+        exit 3
+    else
+        SHASUM_LINUX=1
+    fi
+else
+    SHASUM_OSX=1
+fi
+#
+
+runsum() {
+    local file=$1
+    
+    if [ $SHASUM_OSX -eq 1 ]; then
+        RET=$(shasum -a 512 $file | awk '{print $1}')
+        echo $RET
+    elif [ $SHASUM_LINUX -eq 1 ]; then
+        RET=$(sha512sum $file | awk '{print $1}')
+        echo $RET
+    else
+        exit 3
+    fi
+}
+
+rm -f dst1 dst2 dst3 MANIFEST
+
+echo "LINUX: $SHASUM_LINUX"
+echo "OSX: $SHASUM_OSX"
+
+src1=$(runsum src1)
+src2=$(runsum src2)
+src3=$(runsum src3)
+
+bsdiff src1 src2 src1-to-src2.bsdiff
+bsdiff src2 src3 src2-to-src3.bsdiff
+
+diff12=$(runsum src1-to-src2.bsdiff)
+diff23=$(runsum src2-to-src3.bsdiff)
+
+stack exec -- cardano-updater src1 dst2 src1-to-src2.bsdiff
+stack exec -- cardano-updater src2 dst3 src2-to-src3.bsdiff
+
+dst2=$(runsum dst2)
+if [ "$dst2" != "$src2" ]; then
+    echo "DIFF in first update"
+    exit 2
+else
+    echo "TEST[1] : OK"
+fi
+
+dst3=$(runsum dst3)
+if [ "$dst3" != "$src3" ]; then
+    echo "DIFF in second update"
+    exit 2
+else
+    echo "TEST[2] : OK"
+fi
+
+cat << EOF > MANIFEST
+$src1 $src2 $diff12
+$src2 $src3 $diff23
+EOF
+
+tar cvf update.tar src1-to-src2.bsdiff src2-to-src3.bsdiff MANIFEST
+
+stack exec -- cardano-updater src1 dst3-direct update.tar
+direct=$(runsum dst3-direct)
+
+if [ "$direct" != "$src3" ]; then
+    echo "DIFF in together update"
+    exit 2
+else
+    echo "TEST[3] : OK"
+fi
+
+#bssrc1

@@ -10,4 +10,4 @@ main = do
     args <- getArgs
     case args of
         [a,b,c] -> updater a b c
-        _       -> error ("usage: <program> <file-to-patch> <destination-name> <patch-file>")
+        _       -> error ("usage: cardano-updater <file-to-patch> <destination-name> <patch-file>")

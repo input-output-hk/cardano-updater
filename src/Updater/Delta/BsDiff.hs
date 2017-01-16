@@ -4,10 +4,12 @@
 {-# LANGUAGE GADTs #-}
 module Updater.Delta.BsDiff
     ( openDiff
+    , openDiffLbs
     , applyDiff
     ) where
 
 import           Control.Monad (when)
+import           Control.Exception
 import           Control.Concurrent.MVar
 import qualified Codec.Compression.BZip as BZip
 import qualified Data.ByteString.Lazy as L
@@ -91,10 +93,19 @@ getOffset = (toI64 . L.unpack) <$> consume 8
 
 optional f = (Just <$> f) <|> pure Nothing
 
+-- | What is throwed if the magic value doesn't match a BSDIFF file
+data MagicMismatch = MagicMismatch Int64
+    deriving (Show,Eq, Typeable)
+
+instance Exception MagicMismatch
+
 -- | Open a bsdiff and create a ready to apply structure
 openDiff :: String -> IO BsDiffHandle
-openDiff fp =
-    toResult . runStream toDiffHandle =<< L.readFile (toList fp)
+openDiff fp = openDiffLbs =<< L.readFile (toList fp)
+
+-- | Open a bsdiff from a lazy bytestring and create a ready to apply structure
+openDiffLbs :: L.ByteString -> IO BsDiffHandle
+openDiffLbs = toResult . runStream toDiffHandle
   where
     toResult (Left err) = error (toList err)
     toResult (Right ((hdr, ctrl, dat, extra), _)) =
@@ -105,7 +116,7 @@ openDiff fp =
     toDiffHandle = do
         magic <- getOffset
         -- magic number associated with the file format. In ASCII, "BSDIFF40"
-        when (magic /= 0x3034464649445342) $ error (toList $ show magic)
+        when (magic /= 0x3034464649445342) $ throw $ MagicMismatch magic
         hdr@(Header ctrlLen dataLen _) <- Header <$> getOffset <*> getOffset <*> getOffset
         ctrl  <- consume ctrlLen
         dat   <- consume dataLen
