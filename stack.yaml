@@ -43,6 +43,9 @@ extra-deps:
 - foundation-0.0.3
 - foundation-edge-0.0.1
 
+nix:
+  shell-file: shell.nix
+
 # Override default flag values for local packages and extra-deps
 flags: {}
 
