@@ -123,9 +123,9 @@ updater :: String -- ^ source path
         -> String -- ^ diff specifier
         -> IO ()
 updater srcFile dstFile diffPath = do
-    when (srcFile == dstFile) $ programError "destination cannot be the same as source"
     dstAlreadyExist <- doesFileExist (toList dstFile)
-    when dstAlreadyExist $ programError ("destination " <> dstFile <> " already exist")
+    when (dstAlreadyExist && not (srcFile == dstFile)) $
+        programError ("destination " <> dstFile <> " already exist")
 
     getFormat diffPath >>= updaterWith
   where
