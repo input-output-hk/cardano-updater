@@ -61,8 +61,8 @@ bsdiff src2 src3 src2-to-src3.bsdiff
 diff12=$(runsum src1-to-src2.bsdiff)
 diff23=$(runsum src2-to-src3.bsdiff)
 
-stack exec -- cardano-updater src1 dst2 src1-to-src2.bsdiff
-stack exec -- cardano-updater src2 dst3 src2-to-src3.bsdiff
+stack exec -- cardano-updater file src1 dst2 src1-to-src2.bsdiff
+stack exec -- cardano-updater file src2 dst3 src2-to-src3.bsdiff
 
 dst2=$(runsum dst2)
 if [ "$dst2" != "$src2" ]; then
@@ -87,7 +87,7 @@ EOF
 
 tar cvf update.tar src1-to-src2.bsdiff src2-to-src3.bsdiff MANIFEST
 
-stack exec -- cardano-updater src1 dst3-direct update.tar
+stack exec -- cardano-updater file src1 dst3-direct update.tar
 direct=$(runsum dst3-direct)
 
 if [ "$direct" != "$src3" ]; then
