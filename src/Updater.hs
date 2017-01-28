@@ -2,7 +2,9 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 module Updater
-    ( updater
+    ( OnUnknownFile(..)
+    , updater
+    , updateDirInplace
     ) where
 
 import           Control.Exception
@@ -23,7 +25,7 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.UTF8 as UTF8
 
--- | a simple verison of create a "unique" directory
+-- | a simple version of create a "unique" directory
 createUniqueDir :: String -> Int -> IO String
 createUniqueDir prefix n = do
     let dstDir = prefix <> show n
@@ -117,12 +119,15 @@ getFormat diffPath = do
           | B.isPrefixOf "BSDIFF40" bs -> return Format_BsDiff
           | otherwise                  -> error (Prelude.show bs)
 
+data OnUnknownFile = Copy | Crash | Skip
+
 -- | Create the destination file from source file using the patch
-updater :: String -- ^ source path
-        -> String -- ^ destination path
-        -> String -- ^ diff specifier
+updater :: OnUnknownFile  -- ^ what to do if the file isn't in the diff
+        -> String         -- ^ source path
+        -> String         -- ^ destination path
+        -> String         -- ^ diff specifier
         -> IO ()
-updater srcFile dstFile diffPath = do
+updater onUnknown srcFile dstFile diffPath = do
     dstAlreadyExist <- doesFileExist (toList dstFile)
     when (dstAlreadyExist && not (srcFile == dstFile)) $
         programError ("destination " <> dstFile <> " already exist")
@@ -164,7 +169,11 @@ updater srcFile dstFile diffPath = do
                 nextFile = srcFile <> "-" <> show (iteration + 1)
             case lookup srcHash manifest of
                 Nothing
-                    | iteration == 0 -> programError "no patching done"
+                    | iteration == 0 -> case onUnknown of
+                        Copy  -> unless (srcFile == dstFile) $
+                          copyFile (toList srcFile) (toList dstFile)
+                        Crash -> programError "no patching done"
+                        Skip  -> return ()
                     | otherwise      -> renameFile (toList curFile) (toList dstFile)
                 Just (dstHashExpected, diffHash) -> do
                     fileAlreadyExist <- doesFileExist (toList nextFile)
@@ -189,3 +198,13 @@ updater srcFile dstFile diffPath = do
 
     revLookup :: Eq s => s -> [(f, s)] -> Maybe f
     revLookup x l = fmap fst $ find ((==) x . snd) l
+
+updateDirInplace :: String -- ^ directory path
+                 -> String -- ^ diff specifier
+                 -> IO ()
+updateDirInplace srcDir diffPath = do
+    files <- listDirectory (toList srcDir)
+    forM_ files $ \f -> do
+        let fpath = toList srcDir </> f
+        exists <- doesFileExist fpath
+        when exists $ updater Skip (fromList fpath) (fromList fpath) diffPath
