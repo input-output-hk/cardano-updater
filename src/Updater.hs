@@ -175,6 +175,8 @@ updater srcFile dstFile diffPath = do
                         Just diffContent -> do
                             bsDiff <- openDiffLbs diffContent
                             withFile (toList nextFile) WriteMode $ \dst -> applyDiff bsDiff (toList curFile) dst
+                            unless (iteration == 0) $
+                                removeFile (toList curFile)
 
                             -- make sure we have the expected result from the MANIFEST
                             dstHashActual <- computeHash nextFile
