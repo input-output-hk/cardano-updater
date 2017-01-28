@@ -157,8 +157,6 @@ updater onUnknown srcFile dstFile diffPath = do
             Just (Manifest manifest) -> do
                 srcHash <- computeHash srcFile
                 startApply r manifest srcHash
-                putStrLn "SUCCESS"
-                exitSuccess
 
     startApply patches manifest = loopApply 0
       where
@@ -170,11 +168,18 @@ updater onUnknown srcFile dstFile diffPath = do
             case lookup srcHash manifest of
                 Nothing
                     | iteration == 0 -> case onUnknown of
-                        Copy  -> unless (srcFile == dstFile) $
+                        Copy  -> unless (srcFile == dstFile) $ do
+                          putStrLn ("Copying " <> srcFile <> " to " <> dstFile)
                           copyFile (toList srcFile) (toList dstFile)
-                        Crash -> programError "no patching done"
-                        Skip  -> return ()
-                    | otherwise      -> renameFile (toList curFile) (toList dstFile)
+                          copyPermissions (toList srcFile) (toList dstFile)
+                        Crash -> programError ("Couldn't patch " <> srcFile)
+                        Skip  -> putStrLn ("Skipping " <> srcFile)
+                    | otherwise      -> do
+                        putStrLn ("Patching " <> srcFile <> ": done")
+                        -- if the original file was executable we want the new file
+                        -- to be executable as well
+                        copyPermissions (toList srcFile) (toList curFile)
+                        renameFile (toList curFile) (toList dstFile)
                 Just (dstHashExpected, diffHash) -> do
                     fileAlreadyExist <- doesFileExist (toList nextFile)
                     when fileAlreadyExist $ programError ("destination path file " <> nextFile <> " already exists")
