@@ -151,35 +151,37 @@ updater srcFile dstFile diffPath = do
             Nothing                  -> programError "no MANIFEST found in updating archive"
             Just (Manifest manifest) -> do
                 srcHash <- computeHash srcFile
-                startApply r manifest (srcHash, srcFile)
+                startApply r manifest srcHash
                 putStrLn "SUCCESS"
                 exitSuccess
 
     startApply patches manifest = loopApply 0
       where
-        loopApply :: Int -> (String, String) -> IO ()
-        loopApply iteration (srcHash, srcFile) = do
+        loopApply :: Int -> String -> IO ()
+        loopApply iteration srcHash = do
+            let curFile | iteration == 0 = srcFile
+                        | otherwise      = srcFile <> "-" <> show iteration
+                nextFile = srcFile <> "-" <> show (iteration + 1)
             case lookup srcHash manifest of
                 Nothing
                     | iteration == 0 -> programError "no patching done"
-                    | otherwise      -> renameFile (toList srcFile) (toList dstFile)
+                    | otherwise      -> renameFile (toList curFile) (toList dstFile)
                 Just (dstHashExpected, diffHash) -> do
-                    let dstFile = srcFile <> "-" <> show iteration
-                    fileAlreadyExist <- doesFileExist (toList dstFile)
-                    when fileAlreadyExist $ programError ("destination path file " <> dstFile <> " already exist")
+                    fileAlreadyExist <- doesFileExist (toList nextFile)
+                    when fileAlreadyExist $ programError ("destination path file " <> nextFile <> " already exists")
 
                     case revLookup diffHash patches of
                         Nothing -> programError ("iteration " <> show iteration <> ": cannot find patches with hash: " <> diffHash)
                         Just diffContent -> do
                             bsDiff <- openDiffLbs diffContent
-                            withFile (toList dstFile) WriteMode $ \dst -> applyDiff bsDiff (toList srcFile) dst
+                            withFile (toList nextFile) WriteMode $ \dst -> applyDiff bsDiff (toList curFile) dst
 
                             -- make sure we have the expected result from the MANIFEST
-                            dstHashActual <- computeHash dstFile
+                            dstHashActual <- computeHash nextFile
                             when (dstHashExpected /= dstHashActual) $ programError "expected destination digest is not what it is"
 
                             -- next step of iteration
-                            loopApply (iteration+1) (dstHashExpected, dstFile)
+                            loopApply (iteration+1) dstHashExpected
 
     cleanupDir _ = return ()
 
